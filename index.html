@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Retro Arcade: Invaders</title>
+    <style>
+        body { background-color: #000; color: white; text-align: center; font-family: monospace; }
+        canvas { border: 2px solid #00ff00; background-color: #000; display: block; margin: 20px auto; }
+        .ad-space { width: 728px; height: 90px; background: #222; margin: 10px auto; line-height: 90px; color: #555; }
+    </style>
+</head>
+<body>
+    <h1>RETRO ARCADE: INVADERS</h1>
+    
+    <!-- 上部広告枠 -->
+    <div class="ad-space">ここにバナー広告が表示されます</div>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <!-- 下部広告枠 -->
+    <div class="ad-space">ここにバナー広告が表示されます</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- 設定とデータ ---
+        const WIDTH = 800;
+        const HEIGHT = 600;
+        const GREEN = "#00ff00";
+        const BROWN = "#8b4513";
+        const RED = "#ff4444";
+        const WHITE = "#ffffff";
+
+        let score = 0;
+        let lives = 3;
+        let playerX = WIDTH / 2 - 20;
+        let bullets = []; // {x, y, vy, fromPlayer}
+        let aliens = [];
+        let alienDir = 1;
+        let alienTimer = 0;
+        let gameState = "PLAYING";
+
+        // スプライトデータ[cite: 1]
+        const PLAYER_SPRITE = ["  XX  ","  XX  ","XXXXXX","XXXXXX"," XXXX "];
+        const POOP_SPRITE = ["   XX   ","  XXXX  "," XXXXXX ","XXXXXXXX"];
+
+        // エイリアンの初期化[cite: 1]
+        function initAliens() {
+            aliens = [];
+            for (let r = 0; r < 5; r++) {
+                for (let c = 0; c < 11; c++) {
+                    aliens.push({ x: c * 50 + 100, y: r * 40 + 80, w: 35, h: 25, alive: true });
+                }
+            }
+        }
+
+        function drawPixelSprite(sprite, x, y, w, h, color) {
+            const rows = sprite.length;
+            const cols = sprite[0].length;
+            const pw = w / cols;
+            const ph = h / rows;
+            ctx.fillStyle = color;
+            sprite.forEach((line, r) => {
+                [...line].forEach((char, c) => {
+                    if (char === 'X') ctx.fillRect(x + c * pw, y + r * ph, pw + 1, ph + 1);
+                });
+            });
+        }
+
+        function update() {
+            if (gameState !== "PLAYING") return;
+
+            // 敵の移動ロジック[cite: 1]
+            alienTimer++;
+            const aliveAliens = aliens.filter(a => a.alive);
+            if (aliveAliens.length === 0) { gameState = "WIN"; return; }
+
+            const speed = Math.max(5, 40 - Math.floor((55 - aliveAliens.length) / 2));
+            if (alienTimer >= speed) {
+                let edge = false;
+                aliveAliens.forEach(a => {
+                    a.x += alienDir * 15;
+                    if (a.x <= 10 || a.x >= WIDTH - 40) edge = true;
+                });
+                if (edge) {
+                    alienDir *= -1;
+                    aliveAliens.forEach(a => {
+                        a.y += 20;
+                        if (a.y + 25 >= HEIGHT - 100) gameState = "GAMEOVER";
+                    });
+                }
+                alienTimer = 0;
+            }
+
+            // 敵の攻撃[cite: 1]
+            if (Math.random() < 0.02) {
+                const a = aliveAliens[Math.floor(Math.random() * aliveAliens.length)];
+                bullets.push({ x: a.x + 17, y: a.y + 25, vy: 5, fromPlayer: false });
+            }
+
+            // 弾の更新と当たり判定[cite: 1]
+            bullets = bullets.filter(b => {
+                b.y += b.vy;
+                if (b.y < 0 || b.y > HEIGHT) return false;
+
+                if (b.fromPlayer) {
+                    for (let a of aliens) {
+                        if (a.alive && b.x > a.x && b.x < a.x + a.w && b.y > a.y && b.y < a.y + a.h) {
+                            a.alive = false; score += 10; return false;
+                        }
+                    }
+                } else {
+                    if (b.x > playerX && b.x < playerX + 40 && b.y > HEIGHT - 60 && b.y < HEIGHT - 30) {
+                        lives--; if (lives <= 0) gameState = "GAMEOVER"; return false;
+                    }
+                }
+                return true;
+            });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+            if (gameState === "PLAYING") {
+                drawPixelSprite(PLAYER_SPRITE, playerX, HEIGHT - 60, 40, 30, GREEN);
+                aliens.forEach(a => {
+                    if (a.alive) drawPixelSprite(POOP_SPRITE, a.x, a.y, 35, 25, BROWN);
+                });
+                bullets.forEach(b => {
+                    ctx.fillStyle = b.fromPlayer ? GREEN : RED;
+                    ctx.fillRect(b.x, b.y, 4, 12);
+                });
+                ctx.fillStyle = WHITE;
+                ctx.font = "20px monospace";
+                ctx.fillText(`SCORE: ${score}  LIVES: ${lives}`, 20, 30);
+            } else {
+                ctx.fillStyle = gameState === "WIN" ? GREEN : RED;
+                ctx.font = "50px monospace";
+                ctx.textAlign = "center";
+                ctx.fillText(gameState === "WIN" ? "MISSION SUCCESS" : "GAME OVER", WIDTH / 2, HEIGHT / 2);
+                ctx.font = "20px monospace";
+                ctx.fillText("F5キーでリトライ", WIDTH / 2, HEIGHT / 2 + 50);
+            }
+        }
+
+        // キー入力[cite: 1]
+        const keys = {};
+        window.onkeydown = (e) => {
+            keys[e.key] = true;
+            if (e.key === " " && gameState === "PLAYING") {
+                bullets.push({ x: playerX + 18, y: HEIGHT - 70, vy: -10, fromPlayer: true });
+            }
+        };
+        window.onkeyup = (e) => keys[e.key] = false;
+
+        function gameLoop() {
+            if (keys["ArrowLeft"] || keys["a"]) playerX = Math.max(0, playerX - 5);
+            if (keys["ArrowRight"] || keys["d"]) playerX = Math.min(WIDTH - 40, playerX + 5);
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        initAliens();
+        gameLoop();
+    </script>
+</body>
+</html>
